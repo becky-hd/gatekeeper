@@ -63,6 +63,7 @@ type SyncOnlyEntry struct {
 
 type MatchEntry struct {
 	ExcludedNamespaces []string `json:"excludedNamespaces,omitempty"`
+	NamespaceSelectors []*metav1.LabelSelector   `json:"namespaceSelectors,omitempty"`
 	Processes          []string `json:"processes,omitempty"`
 }
 

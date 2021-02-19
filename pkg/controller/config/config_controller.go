@@ -28,11 +28,14 @@ import (
 	"github.com/open-policy-agent/gatekeeper/pkg/mutation"
 	"github.com/open-policy-agent/gatekeeper/pkg/readiness"
 	"github.com/open-policy-agent/gatekeeper/pkg/target"
+	"github.com/open-policy-agent/gatekeeper/pkg/util"
 	"github.com/open-policy-agent/gatekeeper/pkg/watch"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -341,7 +344,7 @@ func (r *ReconcileConfig) replayData(ctx context.Context) error {
 		for i := range u.Items {
 			syncKey := r.syncMetricsCache.GetSyncKey(u.Items[i].GetNamespace(), u.Items[i].GetName())
 
-			isExcludedNamespace, err := r.skipExcludedNamespace(&u.Items[i])
+			isExcludedNamespace, err := r.skipExcludedNamespace(ctx, &u.Items[i])
 			if err != nil {
 				log.Error(err, "error while excluding namespaces")
 			}
@@ -376,12 +379,23 @@ func (r *ReconcileConfig) removeStaleExpectations(stale *watch.Set) {
 	}
 }
 
-func (r *ReconcileConfig) skipExcludedNamespace(obj *unstructured.Unstructured) (bool, error) {
+func (r *ReconcileConfig) skipExcludedNamespace(ctx context.Context, obj *unstructured.Unstructured) (bool, error) {
 	isNamespaceExcluded, err := r.processExcluder.IsNamespaceExcluded(process.Sync, obj)
 	if err != nil {
 		return false, err
 	}
 
+	if isNamespaceExcluded {
+		return true, nil
+	}
+	ns := &corev1.Namespace{}
+	if !util.IsNamespace(obj) && obj.GetNamespace() != ""{
+		if err = r.reader.Get(ctx, types.NamespacedName{Name: obj.GetNamespace()}, ns); err!= nil {
+			return false, fmt.Errorf("skipExcludedNamespace: %v", err)
+		}
+	}
+	isNamespaceExcluded, err = r.processExcluder.IsNamespaceSelectorExcluded(process.Sync, obj, ns)
+	log.Info("IsNamespaceSelectorExcluded in ","process", process.Sync, "obj", obj.GetName(), "ns", ns.GetName(), "?", isNamespaceExcluded)
 	return isNamespaceExcluded, err
 }
 

@@ -17,6 +17,9 @@ package sync
 
 import (
 	"context"
+	"fmt"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"strings"
 	"sync"
 	"time"
@@ -187,9 +190,11 @@ func (r *ReconcileSync) Reconcile(ctx context.Context, request reconcile.Request
 	}
 
 	// namespace is excluded from sync
-	isExcludedNamespace, err := r.skipExcludedNamespace(instance)
+	isExcludedNamespace, err := r.skipExcludedNamespace(ctx, instance)
+	// TODO return reconcile.Result{}
 	if err != nil {
 		log.Error(err, "error while excluding namespaces")
+		return reconcile.Result{Requeue: true}, fmt.Errorf("error while excluding namespaces %v", err)
 	}
 
 	if isExcludedNamespace {
@@ -245,13 +250,25 @@ func (r *ReconcileSync) Reconcile(ctx context.Context, request reconcile.Request
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileSync) skipExcludedNamespace(obj *unstructured.Unstructured) (bool, error) {
+func (r *ReconcileSync) skipExcludedNamespace(ctx context.Context, obj *unstructured.Unstructured) (bool, error) {
 	isNamespaceExcluded, err := r.processExcluder.IsNamespaceExcluded(process.Sync, obj)
 	if err != nil {
 		return false, err
 	}
-
-	return isNamespaceExcluded, err
+	if isNamespaceExcluded {
+		return true, nil
+	}
+	ns := &corev1.Namespace{}
+	if !util.IsNamespace(obj) {
+		if err = r.reader.Get(ctx, types.NamespacedName{Name: obj.GetNamespace()}, ns); err!= nil {
+			return false, err
+		}
+	}
+	isNamespaceExcluded, err = r.processExcluder.IsNamespaceSelectorExcluded(process.Sync, obj, ns)
+	if err != nil {
+		return false, err
+	}
+	return isNamespaceExcluded, nil
 }
 
 func NewMetricsCache() *MetricsCache {

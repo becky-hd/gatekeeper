@@ -5,6 +5,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"strings"
 
 	"github.com/open-policy-agent/gatekeeper/apis"
@@ -126,7 +128,7 @@ func (h *webhookHandler) tracingLevel(ctx context.Context, req admission.Request
 	return traceEnabled, dump
 }
 
-func (h *webhookHandler) skipExcludedNamespace(req admissionv1.AdmissionRequest, excludedProcess process.Process) (bool, error) {
+func (h *webhookHandler) skipExcludedNamespace(ctx context.Context, req admissionv1.AdmissionRequest, excludedProcess process.Process) (bool, error) {
 	obj := &unstructured.Unstructured{}
 	if _, _, err := deserializer.Decode(req.Object.Raw, nil, obj); err != nil {
 		return false, err
@@ -137,5 +139,16 @@ func (h *webhookHandler) skipExcludedNamespace(req admissionv1.AdmissionRequest,
 		return false, err
 	}
 
+	if isNamespaceExcluded {
+		return true, nil
+	}
+	ns := &corev1.Namespace{}
+	if !util.IsNamespace(obj) && obj.GetNamespace() != ""{
+		if err = h.reader.Get(ctx, types.NamespacedName{Name: obj.GetNamespace()}, ns); err!= nil {
+			return false, fmt.Errorf("skipExcludedNamespace: %v", err)
+		}
+	}
+	isNamespaceExcluded, err = h.processExcluder.IsNamespaceSelectorExcluded(excludedProcess, obj, ns)
+	log.Info("IsNamespaceSelectorExcluded in ","process", excludedProcess, "obj", obj.GetName(), "ns", ns.GetName(), "?", isNamespaceExcluded)
 	return isNamespaceExcluded, err
 }

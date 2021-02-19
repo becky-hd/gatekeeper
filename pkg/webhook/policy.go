@@ -157,7 +157,7 @@ func (h *validationHandler) Handle(ctx context.Context, req admission.Request) a
 	}()
 
 	// namespace is excluded from webhook using config
-	isExcludedNamespace, err := h.skipExcludedNamespace(req.AdmissionRequest, process.Webhook)
+	isExcludedNamespace, err := h.skipExcludedNamespace(ctx, req.AdmissionRequest, process.Webhook)
 	if err != nil {
 		log.Error(err, "error while excluding namespace")
 	}

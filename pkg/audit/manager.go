@@ -363,15 +363,6 @@ func (am *Manager) auditResources(
 
 				for _, obj := range objList.Items {
 					objNamespace := obj.GetNamespace()
-					isExcludedNamespace, err := am.skipExcludedNamespace(&obj)
-					if err != nil {
-						log.Error(err, "error while excluding namespaces")
-					}
-
-					if isExcludedNamespace {
-						continue
-					}
-
 					ns := corev1.Namespace{}
 					if objNamespace != "" {
 						ns, err = nsCache.Get(ctx, am.client, objNamespace)
@@ -380,7 +371,13 @@ func (am *Manager) auditResources(
 							continue
 						}
 					}
-
+					isExcludedNamespace, err := am.skipExcludedNamespace(ctx, &obj, ns)
+					if err != nil {
+						log.Error(err, "error while excluding namespaces")
+					}
+					if isExcludedNamespace {
+						continue
+					}
 					augmentedObj := target.AugmentedUnstructured{
 						Object:    obj,
 						Namespace: &ns,
@@ -542,12 +539,16 @@ func (am *Manager) writeAuditResults(ctx context.Context, constraintsGVKs []sche
 	go am.ucloop.update(ctx, constraintsGVKs)
 }
 
-func (am *Manager) skipExcludedNamespace(obj *unstructured.Unstructured) (bool, error) {
+func (am *Manager) skipExcludedNamespace(ctx context.Context, obj *unstructured.Unstructured, ns *corev1.Namespace) (bool, error) {
 	isNamespaceExcluded, err := am.processExcluder.IsNamespaceExcluded(process.Audit, obj)
 	if err != nil {
 		return false, err
 	}
-
+	if isNamespaceExcluded {
+		return true, nil
+	}
+	isNamespaceExcluded, err = am.processExcluder.IsNamespaceSelectorExcluded(process.Audit, obj, ns)
+	log.Info("IsNamespaceSelectorExcluded in Audit", "obj", obj.GetName(), "ns", ns.GetName(), "?", isNamespaceExcluded)
 	return isNamespaceExcluded, err
 }
 

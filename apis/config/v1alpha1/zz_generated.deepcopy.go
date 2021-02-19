@@ -20,6 +20,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -144,6 +145,17 @@ func (in *MatchEntry) DeepCopyInto(out *MatchEntry) {
 		in, out := &in.ExcludedNamespaces, &out.ExcludedNamespaces
 		*out = make([]string, len(*in))
 		copy(*out, *in)
+	}
+	if in.NamespaceSelectors != nil {
+		in, out := &in.NamespaceSelectors, &out.NamespaceSelectors
+		*out = make([]*v1.LabelSelector, len(*in))
+		for i := range *in {
+			if (*in)[i] != nil {
+				in, out := &(*in)[i], &(*out)[i]
+				*out = new(v1.LabelSelector)
+				(*in).DeepCopyInto(*out)
+			}
+		}
 	}
 	if in.Processes != nil {
 		in, out := &in.Processes, &out.Processes
